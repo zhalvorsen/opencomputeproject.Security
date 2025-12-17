@@ -204,6 +204,24 @@ in the command-specific "ABI" sections in @sec:abi-structure-definitions.
 
 Full structure definitions are provided at the end of this document.
 
+## Multi-part Operations
+
+This profile supports multi-part operations for commands that return large
+amounts of data. This functionality is currently limited to the response data of
+`CertifyKey`, `GetCertificateChain`, and `DeriveContext` when exporting a CDI.
+This profile uses the `OP_HANDLE` field to indicate availability of additional data.
+Additionally, a `MORE_DATA` bitfield is used. The most significant bit of this field
+indicates that the response contains more data. There is also a bit dedicated to each
+output field that contains more data.
+
+When an operation has more data to return, the `OP_HANDLE` in the response will
+be non-zero. To retrieve the remaining data, the caller SHALL issue a subsequent
+request with the `OP_HANDLE` set to the value received in the preceding
+response, while keeping all other input parameters identical to the initial
+request. The operation is complete when the returned `OP_HANDLE` is all zeros.
+The returned context handle will only be valid when all flags in the `MORE_DATA`
+field are zero.
+
 ## Supported Commands
 
 This section describes commands supported by this profile.
@@ -499,18 +517,6 @@ The CDI derivation scheme “ocp.derive.kdf-cdi-384” is defined as follows:
 *   Outputs
     *   48-byte key
 
-### ocp.derive.kdf-cdi-512
-
-The CDI derivation scheme “ocp.derive.kdf-cdi-512” is defined as follows:
-
-*   This derivation scheme SHALL use a cryptographically secure KDF or DRBG.
-*   Inputs
-    *   CDI
-    *   `MEASUREMENT_DATA`
-    *   ASCII Bytes "DPE"
-*   Outputs
-    *   64-byte key
-
 ## CDI Export
 
 ### ocp.export-cdi.raw-256
@@ -522,12 +528,6 @@ To derive the exported keypair, use asymmetric-derivation for the relevant profi
 ### ocp.export-cdi.raw-384
 
 The CDI export scheme "ocp.export-cdi.raw" is a raw 384-bit secret
-
-To generate exported keypair, use asymmetric-derivation for the relevant profile.
-
-### ocp.export-cdi.raw-512
-
-The CDI export scheme "ocp.export-cdi.raw" is a raw 512-bit secret
 
 To generate exported keypair, use asymmetric-derivation for the relevant profile.
 
@@ -573,13 +573,19 @@ follows:
 
 *   The asymmetric key type is ML-DSA-87
 *   Signature scheme is ML-DSA
-*   This derivation scheme SHALL use a cryptographically secure KDF or DRBG.
+*   This derivation scheme SHALL use the following sequence.
+*   Use a cryptographically secure KDF or DRBG to derive 32-byte seed 𝜉 (xi).
 *   Inputs
     *   CDI
     *   `LABEL`
     *   ASCII Bytes "MLDSA"
 *   Outputs
-    *   64-byte key
+    *   32-byte xi
+*   Use ML-DSA.KeyGen_internal (Algorithm 6) to derive the private key [@{fips204}].
+*   Inputs
+    *   32-byte xi
+*   Outputs
+    *  4,896-byte key
 
 ### ocp.key-format.p384.raw
 
@@ -852,7 +858,7 @@ The format “ocp.certificate.irot-eca.mldsa87” is defined as follows:
 
 *   SHALL follow all "Requirements for ECA Certificates" in @sec:eca-cert-requirements
 *   For FWID hashAlg fields provided by DeriveContext, DPE SHALL use the
-    SHA2-512 OID.
+    SHA2-384 OID.
 *   For the SubjectPublicKeyInfo field, DPE SHALL use the ML-DSA-87 OID.
 *   For the Signature field, DPE SHALL use the ML-DSA-87 OID.
 
@@ -886,7 +892,7 @@ The format “ocp.certificate.irot-eca.mldsa87” is defined as follows:
 
 *   SHALL follow all "Requirements for ECA Certificates" in @sec:eca-cert-requirements
 *   For FWID hashAlg fields provided by DeriveContext, DPE SHALL use the
-    SHA2-512 OID.
+    SHA2-384 OID.
 *   For the SubjectPublicKeyInfo field, DPE SHALL use the ML-DSA-87 OID.
 *   For the Signature field, DPE SHALL use the ML-DSA-87 OID.
 
@@ -920,7 +926,7 @@ The format “ocp.csr.irot-eca.mldsa87” is defined as follows:
 
 *   SHALL follow all "Requirements for CSRs" in @sec:csr-requirements
 *   For FWID hashAlg fields provided by DeriveContext, DPE SHALL use the
-    SHA2-512 OID.
+    SHA2-384 OID.
 *   For the SubjectPublicKeyInfo field, DPE SHALL use the ML-DSA-87 OID.
 *   For the Signature of both the CMS message and the CertificationRequest, DPE SHALL
     use the ML-DSA-87 OID.
@@ -942,7 +948,7 @@ The format “ocp.csr.irot-eca.mldsa87” is defined as follows:
 +-------------------------------+------------------------------------------------------------------+
 | max-message-size              | 6144                                                             |
 +-------------------------------+------------------------------------------------------------------+
-| uses-multi-part-messages      | False                                                            |
+| uses-multi-part-messages      | True. See @sec:multi-part-operations for more information.       |
 +-------------------------------+------------------------------------------------------------------+
 | supports-concurrent-operation | False                                                            |
 +-------------------------------+------------------------------------------------------------------+
@@ -1286,7 +1292,7 @@ The format “ocp.csr.irot-eca.mldsa87” is defined as follows:
 +-------------------------------+------------------------------------------------------------------+
 | ========================================= Derivation =========================================== |
 +-------------------------------+------------------------------------------------------------------+
-| dice-derivation               | ocp.derive.kdf-cdi-512                                           |
+| dice-derivation               | ocp.derive.kdf-cdi-384                                           |
 +-------------------------------+------------------------------------------------------------------+
 | asymmetric-derivation         | ocp.derive.kdf-asymmetric-mldsa87                                |
 +-------------------------------+------------------------------------------------------------------+
@@ -1306,7 +1312,7 @@ The format “ocp.csr.irot-eca.mldsa87” is defined as follows:
 +-------------------------------+------------------------------------------------------------------+
 | =========================================== Export ============================================= |
 +-------------------------------+------------------------------------------------------------------+
-| export-cdi-format             | ocp.export-cdi.raw-512                                           |
+| export-cdi-format             | ocp.export-cdi.raw-384                                           |
 +-------------------------------+------------------------------------------------------------------+
 
 ## ABI Structure Definitions {#sec:abi-structure-definitions}
@@ -1352,6 +1358,7 @@ Table: Status Codes
 `DPE_STATUS_HANDLE_DEFINED`                  | 0x82        | Passed handle is already defined.
 `DPE_STATUS_ARGUMENT_NOT_SUPPORTED`          | 0x83        | Argument is not supported by this profile, implementation, or integration.
 `DPE_STATUS_ALREADY_INITIALIZED`             | 0x84        | InitializeContext has already been called on this DPE reset cycle
+`DPE_STATUS_INVALID_OPERATION_HANDLE`        | 0x84        | Operation handle does not exist
 
 Table: Magic Constants
 
@@ -1433,10 +1440,10 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_MLDSA87_SHA384`
 
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
-`H`          | Hash Size             | 64
+`H`          | Hash Size             | 48
 `P`          | Public Key Size       | 2592
 `S`          | Signature Size        | 4697
-`C`          | Certificate Size      | TODO
+`C`          | Certificate Size      | 17408
 
 ### Types
 
@@ -1548,6 +1555,7 @@ Table: `DERIVE_CONTEXT_INPUT_ARGS` struct
 | 0x20 + H        | `BYTES`        | 31:0      | `INPUT_TYPE`                     | 4-byte measurement type field
 | 0x24 + H        | `U32`          | 31:0      | `TARGET_LOCALITY`                | Locality in which `NEW_CONTEXT_HANDLE` will be created if `CHANGE_LOCALITY` is set.
 | 0x28 + H        | `U32`          | 31:0      | `INPUT_SVN`                      | SVN added to TCI node. Callers SHOULD set this field to `0` when SVN is unused.
+| 0x2C + H        | `BYTES`        | 127:0     | `OP_HANDLE`                      | A handle if continuing a multi-part operation, otherwise 0.
 
 Table: `DERIVE_CONTEXT_OUTPUT_ARGS` struct if `EXPORT_CDI` is **not** set
 
@@ -1569,8 +1577,12 @@ Table: `DERIVE_CONTEXT_OUTPUT_ARGS` struct if `EXPORT_CDI` is set
 | 0x0C            | `BYTES`        | 127:0    | `NEW_CONTEXT_HANDLE`          | The handle for the created child context, or rotated context in case RECURSIVE is set.
 | 0x1C            | `BYTES`        | 127:0    | `PARENT_CONTEXT_HANDLE`       | The handle for the parent context if `RETAIN_PARENT_CONTEXT` is set.
 | 0x2C            | `EXPORTED_CDI` | 255:0    | `EXPORTED_CDI`                | If EXPORT_CDI is true, holds exported CDI. Else, value is ignored.
-| 0x4C            | `U32`          | 31:0     | `CERTIFICATE_SIZE`            | Number of bytes used in `NEW_CERTIFICATE`.
-| 0x50            | `BYTES`        |          | `NEW_CERTIFICATE`             | If CREATE_CERTIFICATE is set, holds the new ECA certificate. Else, value is ignored.
+| 0x4C            | `BITFIELD`     | 31       | `MORE_DATA`                   | Whether more data is available in the response.
+|                 |                | 30       | `MORE_CERT`                   | More data is available in the `NEW_CERTIFICATE` field.
+|                 |                | 29:0     | `RESERVED`                    | Reserved.
+| 0x50            | `BYTES`        | 127:0    | `OP_HANDLE`                   | Contains a handle if more data remains in the certificate.
+| 0x60            | `U32`          | 31:0     | `CERTIFICATE_SIZE`            | Number of bytes used in `NEW_CERTIFICATE`.
+| 0x64            | `BYTES`        |          | `NEW_CERTIFICATE`             | If CREATE_CERTIFICATE is set, holds the new ECA certificate. Else, value is ignored.
 
 #### CertifyKey ABI
 
@@ -1585,6 +1597,7 @@ Table: `CERTIFY_KEY_INPUT_ARGS` struct
 | 0x1C            | `BITFIELD`    | 31:0     | `RESERVED`           | Reserved
 | 0x20            | `U32`         | 31:0     | `ADD_FORMAT`         | Output format of `CERTIFICATE`
 | 0x24            | `HASH`        |          | `LABEL`              | Public digest used in key derivation.
+| 0x24 + H        | `BYTES`       | 127:0    | `OP_HANDLE`          | A handle if continuing a multi-part operation, otherwise 0.
 
 Table: `CERTIFY_KEY_OUTPUT_ARGS` struct
 
@@ -1595,8 +1608,12 @@ Table: `CERTIFY_KEY_OUTPUT_ARGS` struct
 | 0x08            | `U32`         | 31:0        | `PROFILE`                      | One of `DPE_PROFILE_*`.
 | 0x0C            | `BYTES`       | 127:0       | `NEW_CONTEXT_HANDLE`           | Numeric handle referring to the updated context.
 | 0x1C            | `PUBKEY`      |             | `DERIVED_PUBLIC_KEY`           | Derived public key. This is the same public key as the Subject of the returned certificate.
-| 0x1C + P        | `U32`         | 31:0        | `CERTIFICATE_SIZE`             | Number of bytes used in `CERTIFICATE_CHAIN`.
-| 0x20 + P        | `CERTIFICATE` |             | `CERTIFICATE`                  | Returned leaf certificate.
+| 0x1C + P        | `BITFIELD`    | 31          | `MORE_DATA`                    | Whether more data is available in the response.
+|                 |               | 30          | `MORE_CERT`                    | More data is available in the `CERTIFICATE` field.
+|                 |               | 29:0        | `RESERVED`                     | Reserved.
+| 0x20 + P        | `BYTES`       | 127:0       | `OP_HANDLE`                    | Contains a handle if more data remains in the certificate.
+| 0x30 + P        | `U32`         | 31:0        | `CERTIFICATE_SIZE`             | Number of bytes used in `CERTIFICATE`.
+| 0x34 + P        | `CERTIFICATE` |             | `CERTIFICATE`                  | Returned leaf certificate.
 
 #### Sign ABI
 
@@ -1673,8 +1690,7 @@ Table: `GET_CERTIFICATE_CHAIN_INPUT_ARGS` struct
 | 0x00            | `U32`         | 31:0     | `MAGIC`          | Magic number `DPE_COMMAND_MAGIC`.
 | 0x04            | `U32`         | 31:0     | `COMMAND_ID`     | `DPE_COMMAND_GET_CERTIFICATE_CHAIN`.
 | 0x08            | `U32`         | 31:0     | `PROFILE`        | One of `DPE_PROFILE_*`.
-| 0x0C            | `U32`         | 31:0     | `OFFSET`         | Offset of certificate chain to retrieve.
-| 0x10            | `U32`         | 31:0     | `SIZE`           | Max number of bytes to return, starting at `OFFSET`.
+| 0x0C            | `BYTES`       | 127:0    | `OP_HANDLE`      | A handle if continuing a multi-part operation, otherwise 0.
 
 Table: `GET_CERTIFICATE_CHAIN_OUTPUT_ARGS` struct
 
@@ -1683,5 +1699,9 @@ Table: `GET_CERTIFICATE_CHAIN_OUTPUT_ARGS` struct
 | 0x00            | `U32`         | 31:0      | `MAGIC`                  | Magic number `DPE_RESPONSE_MAGIC`.
 | 0x04            | `U32`         | 31:0      | `STATUS`                 | One of `DPE_STATUS_*`.
 | 0x08            | `U32`         | 31:0      | `PROFILE`                | One of `DPE_PROFILE_*`.
-| 0x0C            | `U32`         | 31:0      | `CERTIFICATE_SIZE`       | Number of bytes used in `CERTIFICATE_CHAIN`. Can be smaller than requested if no bytes are left to read.
-| 0x10            | `BYTES`       | 16383:0   | `CERTIFICATE_CHAIN`      | Returned certificate chain. This may be a partial certificate chain.
+| 0x0C            | `BITFIELD`    | 31        | `MORE_DATA`              | Whether more data is available in the response.
+|                 |               | 30        | `MORE_CERT_CHAIN`        | More data is available in the `CERTIFICATE_CHAIN` field.
+|                 |               | 29:0      | `RESERVED`               | Reserved.
+| 0x10            | `BYTES`       | 127:0     | `OP_HANDLE`              | Contains a handle if more data remains in the certificate chain.
+| 0x20            | `U32`         | 31:0      | `CERTIFICATE_SIZE`       | Number of bytes used in `CERTIFICATE_CHAIN`. Can be smaller than requested if no bytes are left to read.
+| 0x24            | `BYTES`       |           | `CERTIFICATE_CHAIN`      | Returned certificate chain. This may be a partial certificate chain.
