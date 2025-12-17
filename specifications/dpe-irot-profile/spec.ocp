@@ -1405,6 +1405,7 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_MIN_P256_SHA256`
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
 `H`          | Hash Size             | 32
+`SD`         | Sign Digest Size      | 32
 `P`          | Public Key Size       | 64
 `S`          | Signature Size        | 64
 `C`          | Certificate Size      | 2048
@@ -1414,6 +1415,7 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_P256_SHA256`
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
 `H`          | Hash Size             | 32
+`SD`         | Sign Digest Size      | 32
 `P`          | Public Key Size       | 64
 `S`          | Signature Size        | 64
 `C`          | Certificate Size      | 6144
@@ -1423,6 +1425,7 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_MIN_P384_SHA384`
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
 `H`          | Hash Size             | 48
+`SD`         | Sign Digest Size      | 48
 `P`          | Public Key Size       | 96
 `S`          | Signature Size        | 96
 `C`          | Certificate Size      | 2048
@@ -1432,6 +1435,7 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_P384_SHA384`
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
 `H`          | Hash Size             | 48
+`SD`         | Sign Digest Size      | 48
 `P`          | Public Key Size       | 96
 `S`          | Signature Size        | 96
 `C`          | Certificate Size      | 6144
@@ -1441,6 +1445,7 @@ Table: Profile-dependant ABI constants for `DPE_PROFILE_IROT_MLDSA87_SHA384`
 **Name**     | **Description**       | **Value**
 ------------ | --------------------- | --------
 `H`          | Hash Size             | 48
+`SD`         | Sign Digest Size      | 64
 `P`          | Public Key Size       | 2592
 `S`          | Signature Size        | 4697
 `C`          | Certificate Size      | 17408
@@ -1455,6 +1460,7 @@ Table: ABI Types
 `U32`           | 4          | 4-byte little-endian unsigned integer.
 `BITFIELD`      | 4          | 4-byte bitfield. Bit 31 SHALL refer to the most significant bit and bit 0 SHALL refer to the least significant bit.
 `HASH`          | H          | A hash. Size depends on H value for the profile.
+`SIGN_DIGEST`   | SD         | Precomputed digest for signing. Size depends on SD value for the profile. Type depends on `to-be-signed-format` for the profile.
 `PUBKEY`        | P          | A public key. Size depends on the P value for the profile. Encoding defined by public-key-format.
 `SIGNATURE`     | S          | A signature. Size depends on the S value for the profile. Encoding defined by signature-format.
 `CERTIFICATE`   | C          | A certificate. Size depends on the C value for the profile. Encoding defined by max-certificate-size.
@@ -1617,7 +1623,7 @@ Table: `CERTIFY_KEY_OUTPUT_ARGS` struct
 
 #### Sign ABI
 
-Table: `SIGN_INPUT_ARGS` struct
+Table: `SIGN_INPUT_ARGS` struct if `IS_RAW_DATA` is **not** set
 
 | **Byte Offset** | **Type**      | **Bits** | **Name**             | **Description**
 | -------         | ------------- | -------  | -------------------- | -------------------------------------------------------
@@ -1626,8 +1632,23 @@ Table: `SIGN_INPUT_ARGS` struct
 | 0x08            | `U32`         | 31:0     | `PROFILE`            | One of `DPE_PROFILE_*`.
 | 0x0C            | `BYTES`       | 127:0    | `CONTEXT_HANDLE`     | A numeric handle referring to a DPE context.
 | 0x1C            | `HASH`        |          | `LABEL`              | Digest measurement label used in key derivation.
-| 0x1C + H        | `BITFIELD`    | 31:0     | `RESERVED`           | Reserved
-| 0x20 + H        | `HASH`        |          | `TO_BE_SIGNED`       | Hash to be signed.
+| 0x1C + H        | `BITFIELD`    | 31       | `IS_RAW_DATA`        | If set, `TO_BE_SIGNED` contains raw data to be signed.
+|                 |               | 30:0     | `RESERVED`           | Reserved
+| 0x20 + H        | `BYTES`       |          | `TO_BE_SIGNED`       | Precomputed `SIGN_DIGEST` or raw data to be signed.
+
+Table: `SIGN_INPUT_ARGS` struct if `IS_RAW_DATA` is set
+
+| **Byte Offset** | **Type**      | **Bits** | **Name**             | **Description**
+| -------         | ------------- | -------  | -------------------- | -------------------------------------------------------
+| 0x00            | `U32`         | 31:0     | `MAGIC`              | Magic number `DPE_COMMAND_MAGIC`.
+| 0x04            | `U32`         | 31:0     | `COMMAND_ID`         | `DPE_COMMAND_SIGN`.
+| 0x08            | `U32`         | 31:0     | `PROFILE`            | One of `DPE_PROFILE_*`.
+| 0x0C            | `BYTES`       | 127:0    | `CONTEXT_HANDLE`     | A numeric handle referring to a DPE context.
+| 0x1C            | `HASH`        |          | `LABEL`              | Digest measurement label used in key derivation.
+| 0x1C + H        | `BITFIELD`    | 31       | `IS_RAW_DATA`        | If set, `TO_BE_SIGNED` contains raw data to be signed.
+|                 |               | 30:0     | `RESERVED`           | Reserved
+| 0x20 + H        | `U32`         | 31:0     | `TO_BE_SIGNED_SIZE`  | Size of `TO_BE_SIGNED` in bytes.
+| 0x24 + H        | `BYTES`       |          | `TO_BE_SIGNED`       | Raw data to be signed
 
 Table: `SIGN_OUTPUT_ARGS` struct
 
